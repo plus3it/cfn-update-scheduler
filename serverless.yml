@@ -11,7 +11,7 @@ service: cfn-stack-update
 provider:
   name: aws
   runtime: python3.6
-  timeout: 90 
+  timeout: 120
   iamRoleStatements:
     - Effect: "Allow"
       Action:
@@ -22,6 +22,9 @@ provider:
     - Effect: "Allow"
       Action:
         - "ec2:DescribeImages"
+        - "ec2:DescribeInstances"
+        - "ec2:StopInstances"
+        - "ec2:StartInstances"
       Resource: "*"
     - Effect: "Allow"
       Action:
@@ -32,6 +35,7 @@ provider:
         -  "cloudformation:DescribeStackResources"
         -  "cloudformation:GetTemplate"
         -  "cloudformation:ValidateTemplate"
+        -  "cloudformation:UpdateStack"
       Resource: "*"
 
 package:
