@@ -1,0 +1,53 @@
+# Welcome to serverless. Read the docs
+# https://serverless.com/framework/docs/
+
+# Serverless.yml is the configuration the CLI
+# uses to deploy your code to your provider of choice
+
+# The `service` block is the name of the service
+service: cfn-stack-update
+
+# The `provider` block defines where your service will be deployed
+provider:
+  name: aws
+  runtime: python3.6
+  timeout: 90 
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "logs:CreateLogGroup"
+        - "logs:CreateLogStream"
+        - "logs:PutLogEvents"
+      Resource: "arn:aws:logs:*:*:*"
+    - Effect: "Allow"
+      Action:
+        - "ec2:DescribeImages"
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
+        -  "cloudformation:CreateStack"
+        -  "cloudformation:ListStacks"
+        -  "cloudformation:DescribeStacks"
+        -  "cloudformation:DescribeStackEvents"
+        -  "cloudformation:DescribeStackResources"
+        -  "cloudformation:GetTemplate"
+        -  "cloudformation:ValidateTemplate"
+      Resource: "*"
+
+package:
+  exclude:
+    - ./**
+  include:
+    - auto-update-cfn-stack.py
+
+# The `functions` block defines what code to deploy
+functions:
+  auto-update-cfn-stack:
+    handler: auto-update-cfn-stack.lambda_handler
+    # The `events` block defines how to trigger the handler.helloWorld code
+    events:
+      - schedule:
+          name: "CheckStacksScheduledEvent"
+          description: "CloudWatch Event triggered on schedule"
+          rate: rate(1 minute)
+          enabled: false
