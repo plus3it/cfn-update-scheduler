@@ -50,10 +50,11 @@ def change_toggle(flagged_stack):
 
 def update_stack(stack_name):
     """Update stack."""
+    # skip the update if the stack_name is None
+    if not stack_name:
+        return
     stack_parameters = change_toggle(stack_name)
-    print('Made it this far')
     stack = cloudformation.Stack(stack_name)
-    print('trying to update stack: {}'.format(stack_name))
     kwargs = {
               'StackName': stack_name,
               'UsePreviousTemplate': True,
@@ -64,7 +65,7 @@ def update_stack(stack_name):
                 ],
               'Tags': stack.tags
     }
-    print(kwargs)
+    # print(kwargs)
     response = client.update_stack(**kwargs)
     return response
 
@@ -78,4 +79,4 @@ def list_check(stack_list):
         update_stack(stack_list)
 
 
-update_stack(list_check('Taylor-test-stack'))
+update_stack(list_check(get_stacks()))
