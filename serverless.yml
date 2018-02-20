@@ -12,7 +12,7 @@ plugins:
   - serverless-pseudo-parameters
 
 # The `service` block is the name of the service
-service: cfn_stack_update
+service: cfn-stack-update
 
 # The `provider` block defines where your service will be deployed
 provider:
