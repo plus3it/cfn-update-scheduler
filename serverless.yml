@@ -4,6 +4,10 @@
 # Serverless.yml is the configuration the CLI
 # uses to deploy your code to your provider of choice
 
+custom:
+  function_name: auto-update-cfn-stack
+  account_id: "701759196663"
+
 # The `service` block is the name of the service
 service: cfn-stack-update
 
@@ -11,6 +15,8 @@ service: cfn-stack-update
 provider:
   name: aws
   runtime: python3.6
+  stage: dev
+  region: us-east-1
   timeout: 120
   iamRoleStatements:
     - Effect: "Allow"
@@ -19,6 +25,16 @@ provider:
         - "logs:CreateLogStream"
         - "logs:PutLogEvents"
       Resource: "arn:aws:logs:*:*:*"
+    - Effect: "Allow"
+      Action:
+        - "events:DeleteRule"
+        - "events:DisableRule"
+        - "events:EnableRule"
+        - "events:PutEvents"
+        - "events:PutTargets"
+        - "events:RemoveTargets"
+        - "events:PutRule"
+      Resource: "*"
     - Effect: "Allow"
       Action:
         - "ec2:DescribeImages"
@@ -37,21 +53,26 @@ provider:
         -  "cloudformation:ValidateTemplate"
         -  "cloudformation:UpdateStack"
       Resource: "*"
+    - Effect: "Allow"
+      Action:
+        - "lambda:AddPermission"
+        - "lambda:RemovePermission"
+      Resource: arn:aws:lambda:${self:provider.region}:${self:custom.account_id}:function:${self:service}-${self:provider.stage}-${self:custom.function_name}
 
 package:
   exclude:
     - ./**
   include:
     - auto-update-cfn-stack.py
+    - cfnresponse.py
 
 # The `functions` block defines what code to deploy
 functions:
   auto-update-cfn-stack:
     handler: auto-update-cfn-stack.lambda_handler
-    # The `events` block defines how to trigger the handler.helloWorld code
-    events:
-      - schedule:
-          name: "CheckStacksScheduledEvent"
-          description: "CloudWatch Event triggered on schedule"
-          rate: rate(1 minute)
-          enabled: false
+    environment:
+      ACCOUNT_ID: ${self:custom.account_id}
+      STAGE: ${self:provider.stage}
+      REGION: ${self:provider.region}
+      SERVICE: ${self:service}
+      FUNCTION_NAME: ${self:custom.function_name}
