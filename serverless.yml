@@ -5,11 +5,14 @@
 # uses to deploy your code to your provider of choice
 
 custom:
-  function_name: auto-update-cfn-stack
+  function_name: auto_update_cfn_stack
   account_id: "701759196663"
 
+plugins:
+  - serverless-pseudo-parameters
+
 # The `service` block is the name of the service
-service: cfn-stack-update
+service: cfn_stack_update
 
 # The `provider` block defines where your service will be deployed
 provider:
@@ -63,13 +66,13 @@ package:
   exclude:
     - ./**
   include:
-    - auto-update-cfn-stack.py
+    - auto_update_cfn_stack.py
     - cfnresponse.py
 
 # The `functions` block defines what code to deploy
 functions:
-  auto-update-cfn-stack:
-    handler: auto-update-cfn-stack.lambda_handler
+  auto_update_cfn_stack:
+    handler: auto_update_cfn_stack.lambda_handler
     environment:
       ACCOUNT_ID: ${self:custom.account_id}
       STAGE: ${self:provider.stage}
