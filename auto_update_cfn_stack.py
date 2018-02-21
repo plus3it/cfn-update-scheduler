@@ -5,6 +5,7 @@ import boto3
 import cfnresponse
 import json
 import os
+import logging
 
 cloudformation = boto3.resource('cloudformation')
 client = boto3.client('cloudformation')
@@ -20,6 +21,14 @@ account_id = os.environ['ACCOUNT_ID']
 
 function_name = "{}-{}-{}".format(service, stage, function_name)
 
+# https://stackoverflow.com/questions/37703609/using-python-logging-with-aws-lambda
+while len(logging.root.handlers) > 0:
+    logging.root.removeHandler(logging.root.handlers[-1])
+logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+logformat = '[%(name)s]: %(message)s'
+logging.basicConfig(format=logformat, level=logging.INFO)
+log = logging.getLogger(__name__)
+
 
 def create_event(stack_name, interval, toggle_parameter, toggle_values):
     """Create a cloudwatch event."""
@@ -31,7 +40,7 @@ def create_event(stack_name, interval, toggle_parameter, toggle_values):
         State='ENABLED',
         Description=event_description
     )
-    print("create_event response: {}".format(response))
+    log.info(response)
     return response
 
 
@@ -60,8 +69,7 @@ def put_targets(stack_name, toggle_parameter, toggle_values):
             }
         ]
     )
-    lambda_add_resource_policy(event_name)
-    print("put_targets response: {}".format(response))
+    log.info(response)
     return response
 
 
@@ -77,7 +85,7 @@ def lambda_add_resource_policy(event_name):
             Principal='events.amazonaws.com',
             SourceArn=rule_arn,
         )
-    print("lambda_add_resource_policy response: {}".format(response))
+    log.info(response)
     return response
 
 
@@ -88,7 +96,7 @@ def lambda_remove_resource_policy(event_name):
         FunctionName=function_name,
         StatementId=statement_id,
     )
-    print("lambda_remove_resource_policy response: {}".format(response))
+    log.info(response)
     return response
 
 
@@ -104,7 +112,7 @@ def remove_targets(event_name):
             ]
         )
     lambda_remove_resource_policy(event_name)
-    print("remove_targets response: {}".format(response))
+    log.info(response)
     return response
 
 
@@ -115,7 +123,7 @@ def delete_event(stack_name):
     response = event.delete_rule(
         Name=event_name
         )
-    print("delete_event response: {}".format(response))
+    log.info(response)
     return response
 
 
@@ -136,7 +144,7 @@ def change_toggle(stack_name, toggle_parameter, toggle_values):
                'ParameterValue': toggle_values[0]})
         else:
             continue
-
+    log.info(parameterlist)
     return parameterlist
 
 
@@ -160,7 +168,7 @@ def update_stack(stack_name, toggle_parameter, toggle_values):
     }
     # print(kwargs)
     response = client.update_stack(**kwargs)
-    print("update_stack response: {}".format(response))
+    log.info(response)
     return response
 
 
@@ -176,35 +184,62 @@ def lambda_handler(event, context):
         interval = event['ResourceProperties']['UpdateSchedule']
         stack_name = event['ResourceProperties']['StackName']
         if event['RequestType'] == 'Delete':
+            event_name = ("auto-update-{}".format(stack_name))
             try:
                 delete_event(stack_name)
+                log.info('Deleted event: {}'.format(event_name))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS,
                                  response_data)
             except Exception as e:
                 cfnresponse.send(event, context, cfnresponse.SUCCESS,
                                  response_data)
+                log.error(
+                 'Delete event: {} operation failed.'.format(event_name))
+                raise
         if event['RequestType'] == 'Create':
+            event_name = ("auto-update-{}".format(stack_name))
             try:
                 create_event(stack_name, interval, toggle_parameter,
                              toggle_values)
+                log.info(
+                 'Created CloudWatch event: {}'.format(event_name))
                 put_targets(stack_name, toggle_parameter, toggle_values)
+                log.info(
+                 'Associated Cloudwatch event {} with {}'.format(
+                   event_name, stack_name))
+                lambda_add_resource_policy(event_name)
+                log.info('Added resource policy for Cloudwatch event.')
                 cfnresponse.send(event, context, cfnresponse.SUCCESS,
                                  response_data, "CustomResourcePhyiscalID")
             except Exception as e:
+                log.error('Create event failed.')
+                print(str(e), e.args)
                 cfnresponse.send(event, context, cfnresponse.FAILED,
                                  response_data, "CustomResourcePhyiscalID")
+                raise
         if event['RequestType'] == 'Update':
             try:
                 create_event(stack_name, interval, toggle_parameter,
                              toggle_values)
+                log.info('Succesfully updated stack: {}'.format(stack_name))
                 cfnresponse.send(event, context, cfnresponse.SUCCESS,
                                  response_data, "CustomResourcePhyiscalID")
             except Exception as e:
+                log.error('Update event failed.')
+                print(str(e), e.args)
                 cfnresponse.send(event, context, cfnresponse.FAILED,
                                  response_data, "CustomResourcePhyiscalID")
+                raise
     except KeyError:
-        stack_name = event['stack_name']
-        toggle_parameter = event['toggle_parameter']
-        toggle_values = literal_eval(event['toggle_values'])
-        update_stack(stack_name, toggle_parameter, toggle_values)
-        print('Updated stack {}'.format(stack_name))
+        try:
+            stack_name = event['stack_name']
+            toggle_parameter = event['toggle_parameter']
+            toggle_values = literal_eval(event['toggle_values'])
+            update_stack(stack_name, toggle_parameter, toggle_values)
+            log.info(
+             'CloudWatch successfully triggered update of stack: {}'.format(
+               stack_name))
+        except Exception as e:
+            log.error('CloudWatch triggerd update of stack: {} failed.'.format(
+               stack_name))
+            print(str(e), e.args)
