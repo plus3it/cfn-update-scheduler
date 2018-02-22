@@ -7,7 +7,6 @@ import json
 import os
 import logging
 
-cloudformation = boto3.resource('cloudformation')
 client = boto3.client('cloudformation')
 event = boto3.client('events')
 iam = boto3.client('iam')
@@ -22,12 +21,11 @@ account_id = os.environ['ACCOUNT_ID']
 function_name = "{}-{}-{}".format(service, stage, function_name)
 
 # https://stackoverflow.com/questions/37703609/using-python-logging-with-aws-lambda
-while len(logging.root.handlers) > 0:
-    logging.root.removeHandler(logging.root.handlers[-1])
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
-logformat = '[%(name)s]: %(message)s'
-logging.basicConfig(format=logformat, level=logging.INFO)
+# while len(logging.root.handlers) > 0:
+#     logging.root.removeHandler(logging.root.handlers[-1])
+# logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
 
 
 def create_event(stack_name, interval, toggle_parameter, toggle_values):
@@ -111,7 +109,6 @@ def remove_targets(event_name):
             function_name,
             ]
         )
-    lambda_remove_resource_policy(event_name)
     log.info(response)
     return response
 
@@ -127,25 +124,31 @@ def delete_event(stack_name):
     return response
 
 
-def change_toggle(stack_name, toggle_parameter, toggle_values):
+def get_parameters(stack_name):
+    """Get stack's parameters."""
+    stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
+    current_parameter_list = stack['Parameters']
+    return current_parameter_list
+
+
+def change_toggle(parameter_list, toggle_parameter, toggle_values):
     """Change stack update toggle."""
-    flagged_stack = cloudformation.Stack(stack_name)
-    parameterlist = flagged_stack.parameters
-    for index, dictionary in enumerate(parameterlist):
+    for index, dictionary in enumerate(parameter_list):
         key = dictionary['ParameterKey']
         value = dictionary['ParameterValue']
         if key == toggle_parameter and value == toggle_values[0]:
-            parameterlist[index] = (
+            parameter_list[index] = (
              {'ParameterKey': toggle_parameter,
               'ParameterValue': toggle_values[1]})
         elif key == toggle_parameter and value == toggle_values[1]:
-            parameterlist[index] = (
+            parameter_list[index] = (
               {'ParameterKey': toggle_parameter,
                'ParameterValue': toggle_values[0]})
         else:
             continue
-    log.info(parameterlist)
-    return parameterlist
+    updated_parameter_list = parameter_list
+    log.info(updated_parameter_list)
+    return updated_parameter_list
 
 
 def update_stack(stack_name, toggle_parameter, toggle_values):
@@ -153,9 +156,10 @@ def update_stack(stack_name, toggle_parameter, toggle_values):
     # skip the update if the stack_name is None
     if not stack_name:
         return
-    stack_parameters = change_toggle(stack_name, toggle_parameter,
+    stack_parameters = change_toggle(get_parameters(stack_name),
+                                     toggle_parameter,
                                      toggle_values)
-    stack = cloudformation.Stack(stack_name)
+    stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
     kwargs = {
               'StackName': stack_name,
               'UsePreviousTemplate': True,
@@ -164,7 +168,7 @@ def update_stack(stack_name, toggle_parameter, toggle_values):
                     'CAPABILITY_IAM',
                     'CAPABILITY_NAMED_IAM'
                 ],
-              'Tags': stack.tags
+              'Tags': stack['Tags']
     }
     # print(kwargs)
     response = client.update_stack(**kwargs)
@@ -174,7 +178,7 @@ def update_stack(stack_name, toggle_parameter, toggle_values):
 
 def lambda_handler(event, context):
     """Parse event."""
-    print(event)
+    # print(event)
     try:
         response_value = event['ResourceProperties']
         response_data = {}
@@ -188,11 +192,22 @@ def lambda_handler(event, context):
             try:
                 delete_event(stack_name)
                 log.info('Deleted event: {}'.format(event_name))
-                cfnresponse.send(event, context, cfnresponse.SUCCESS,
-                                 response_data)
+                lambda_remove_resource_policy(event_name)
+                log.info('Removed event resource policy.')
+                reason = "deleted cw update event"
+                cfnresponse.send(event,
+                                 context,
+                                 cfnresponse.SUCCESS,
+                                 response_data,
+                                 reason,
+                                 "CustomResourcePhyiscalID")
             except Exception as e:
-                cfnresponse.send(event, context, cfnresponse.SUCCESS,
-                                 response_data)
+                cfnresponse.send(event,
+                                 context,
+                                 cfnresponse.SUCCESS,
+                                 response_data,
+                                 reason,
+                                 "CustomResourcePhyiscalID")
                 log.error(
                  'Delete event: {} operation failed.'.format(event_name))
                 raise
@@ -209,26 +224,48 @@ def lambda_handler(event, context):
                    event_name, stack_name))
                 lambda_add_resource_policy(event_name)
                 log.info('Added resource policy for Cloudwatch event.')
-                cfnresponse.send(event, context, cfnresponse.SUCCESS,
-                                 response_data, "CustomResourcePhyiscalID")
+                reason = "created cw auto update event"
+                cfnresponse.send(event,
+                                 context,
+                                 cfnresponse.SUCCESS,
+                                 response_data,
+                                 reason,
+                                 "CustomResourcePhyiscalID")
             except Exception as e:
                 log.error('Create event failed.')
                 print(str(e), e.args)
-                cfnresponse.send(event, context, cfnresponse.FAILED,
-                                 response_data, "CustomResourcePhyiscalID")
+                cfnresponse.send(event,
+                                 context,
+                                 cfnresponse.FAILED,
+                                 response_data,
+                                 reason,
+                                 "CustomResourcePhyiscalID")
                 raise
         if event['RequestType'] == 'Update':
             try:
-                create_event(stack_name, interval, toggle_parameter,
-                             toggle_values)
-                log.info('Succesfully updated stack: {}'.format(stack_name))
-                cfnresponse.send(event, context, cfnresponse.SUCCESS,
-                                 response_data, "CustomResourcePhyiscalID")
+                stack = (
+                 client.describe_stacks(StackName=stack_name)['Stacks'][0])
+                if stack['StackStatus'] is not 'CREATE_IN_PROGRESS':
+                    create_event(stack_name, interval, toggle_parameter,
+                                 toggle_values)
+                    log.info(
+                     'Succesfully updated stack: {}'.format(stack_name))
+                reason = "updated cw event"
+                cfnresponse.send(event,
+                                 context,
+                                 cfnresponse.SUCCESS,
+                                 response_data,
+                                 reason,
+                                 "CustomResourcePhyiscalID")
             except Exception as e:
                 log.error('Update event failed.')
                 print(str(e), e.args)
-                cfnresponse.send(event, context, cfnresponse.FAILED,
-                                 response_data, "CustomResourcePhyiscalID")
+                cfnresponse.send(event,
+                                 context,
+                                 cfnresponse.FAILED,
+                                 response_data,
+                                 reason,
+                                 "CustomResourcePhyiscalID")
                 raise
     except KeyError:
         try:

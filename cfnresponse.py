@@ -11,14 +11,18 @@ import json
 SUCCESS = "SUCCESS"
 FAILED = "FAILED"
 
-def send(event, context, responseStatus, responseData, physicalResourceId=None, noEcho=False):
+
+def send(event, context, responseStatus, responseData, reason=None, physicalResourceId=None, noEcho=False):
     responseUrl = event['ResponseURL']
 
     print(responseUrl)
 
     responseBody = {}
     responseBody['Status'] = responseStatus
-    responseBody['Reason'] = 'See the details in CloudWatch Log Stream: ' + context.log_stream_name
+    if reason is None:
+        responseBody['Reason'] = 'See the details in CloudWatch Log Stream: ' + context.log_stream_name
+    else:
+        responseBody['Reason'] = reason
     responseBody['PhysicalResourceId'] = physicalResourceId or context.log_stream_name
     responseBody['StackId'] = event['StackId']
     responseBody['RequestId'] = event['RequestId']
@@ -31,8 +35,8 @@ def send(event, context, responseStatus, responseData, physicalResourceId=None, 
     print("Response body:\n" + json_responseBody)
 
     headers = {
-        'content-type' : '',
-        'content-length' : str(len(json_responseBody))
+        'content-type': '',
+        'content-length': str(len(json_responseBody))
     }
 
     try:
