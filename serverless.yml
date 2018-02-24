@@ -4,15 +4,11 @@
 # Serverless.yml is the configuration the CLI
 # uses to deploy your code to your provider of choice
 
-custom:
-  function_name: auto_update_cfn_stack
-  account_id: "701759196663"
-
 plugins:
   - serverless-pseudo-parameters
 
 # The `service` block is the name of the service
-service: cfn-stack-update
+service: cfn-update-scheduler
 
 # The `provider` block defines where your service will be deployed
 provider:
@@ -40,13 +36,6 @@ provider:
       Resource: "*"
     - Effect: "Allow"
       Action:
-        - "ec2:DescribeImages"
-        - "ec2:DescribeInstances"
-        - "ec2:StopInstances"
-        - "ec2:StartInstances"
-      Resource: "*"
-    - Effect: "Allow"
-      Action:
         -  "cloudformation:CreateStack"
         -  "cloudformation:ListStacks"
         -  "cloudformation:DescribeStacks"
@@ -58,24 +47,84 @@ provider:
       Resource: "*"
     - Effect: "Allow"
       Action:
+        -  "cloudwatch:GetMetricStatistics"
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
         - "lambda:AddPermission"
         - "lambda:RemovePermission"
-      Resource: arn:aws:lambda:${self:provider.region}:${self:custom.account_id}:function:${self:service}-${self:provider.stage}-${self:custom.function_name}
+        - "lambda:GetFunction"
+      Resource:
+        - arn:aws:lambda:${self:provider.region}:#{AWS::AccountId}:function:${self:functions.cwe_update_target.name}
+    # - Effect: "Allow"
+    #   Action:
+    #     -   "iam:GetRole"
+    #     -   "iam:PassRole"
+    #   Resource:
+    #     - arn:aws:iam::#{AWS::AccountId}:role/StackUpdateRole
 
 package:
-  exclude:
-    - ./**
-  include:
-    - auto_update_cfn_stack.py
-    - cfnresponse.py
+   individually: true
 
 # The `functions` block defines what code to deploy
 functions:
-  auto_update_cfn_stack:
-    handler: auto_update_cfn_stack.lambda_handler
+  cfn_auto_update_broker:
+    name: ${self:service}-${self:provider.stage}-cfn_auto_update_broker
+    handler: cfn_auto_update_broker.lambda_handler
+    package:
+      exclude:
+        - ./**
+      include:
+        - cfn_auto_update_broker.py
+        - cfnresponse.py
     environment:
-      ACCOUNT_ID: ${self:custom.account_id}
-      STAGE: ${self:provider.stage}
       REGION: ${self:provider.region}
-      SERVICE: ${self:service}
-      FUNCTION_NAME: ${self:custom.function_name}
+      FUNCTION_NAME: ${self:functions.cwe_update_target.name}
+  cwe_update_target:
+    name: ${self:service}-${self:provider.stage}-cwe_update_target
+    handler: cwe_update_target.lambda_handler
+    package:
+      exclude:
+        - ./**
+      include:
+        - cwe_update_target.py
+    environment:
+      STACK_UPDATE_ARN: arn:aws:iam::#{AWS::AccountId}:role/StackUpdateRole
+
+resources:
+  Resources:
+    CFNUpdateSchedulerStackUpdateRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: StackUpdateRole
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            -
+              Effect: Allow
+              Principal:
+                Service:
+                  - "lambda.amazonaws.com"
+                AWS:
+                  - Fn::GetAtt: [ IamRoleLambdaExecution, Arn ]
+              Action:
+                - "sts:AssumeRole"
+        Policies:
+          -
+            PolicyName: StackUpdatePolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                -
+                  Effect: "Allow"
+                  Action: "*"
+                  Resource: "*"
+    # Outputs:
+    #   TEST:
+    #     Description: "The ARN of the cfn stack update role"
+    #     Value:
+    #       Fn::GetAtt: [ CFNUpdateSchedulerStackUpdateRole, Arn ]
+    #     # CFNUpdateLambdaArn:
+    #     #   Description: The ARN of the cfn stack update lambda function
+    #     #   Value:
+    #     #    - Fn::GetAtt: [cwe_update_targetLambdaFunction, Arn ]

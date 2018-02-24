@@ -88,7 +88,7 @@
                     "arn:aws:lambda",
                     { "Ref" : "AWS::Region" },
                     { "Ref" : "AWS::AccountId" },
-                    "function:cfn-stack-update-dev-auto_update_cfn_stack"
+                    "function:cfn-update-scheduler-dev-cfn_auto_update_broker"
                 ]]},
                 "StackName" : { "Ref" : "AWS::StackName" },
                 "UpdateSchedule": { "Fn::Join" : [
