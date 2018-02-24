@@ -8,7 +8,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Prerequisites
 
-1. Command line access to an AWS account with the [required permissions](## Deployment)
+1. Command line access to an AWS account with the [required permissions](##Deployment)
 
 2. Ensure your environment has been configured in accordance with the [AWS installation instructions for the serverless framework](https://serverless.com/framework/docs/providers/aws/guide/installation/).
 
@@ -63,7 +63,7 @@ Give an example
 
 3. Confirm the CloudWatch rule has been created for your stack by navigating to the CloudWatch > Rules section of your AWS account's web console.
 
-####CloudFormation template required Parameters:
+#### CloudFormation template required Parameters:
 A toggle is utilized to force CloudFormation to re-evaluate a resource during the stack update.
 
 ```
@@ -85,7 +85,7 @@ A toggle is utilized to force CloudFormation to re-evaluate a resource during th
   "Default" : "5 minutes"
 }
 ```
-####CloudFormation template required Resources:
+#### CloudFormation template required Resources:
 The included [example template](https://github.com/userhas404d/cfn_update_scheduler/blob/master/Lambda-cfn-auto-update.template) utilizes this toggle to update the value of the `AdditionalInfo` property of an EC2 instance. This in turn forces the [`AmiIdLookup` custom resource](https://github.com/userhas404d/cfn-look-up-ami-ids) to always return the latest AMI Id on stack update.
 ```
 "Resources" : {
@@ -143,7 +143,7 @@ And finally the custom resource that references the `cfn_update_broker` Lambda f
 
 When this project's serverless package is deployed two lambda functions will be created.
 
-###`cfn_auto_update_broker`
+### `cfn_auto_update_broker`
 
 This function is running with a least privilege IAM role (`cfn-update-scheduler-dev-us-east-1-lambdaRole`) and operates as the listener to the CloudWatch custom resource.
 
@@ -166,7 +166,7 @@ It operates as follows:
 
   - delete the CloudWatch rule.
 
-###`cwe_update_target`
+### `cwe_update_target`
 
 This function is invoked by the scheduled Cloudwatch rules. On receiving the rule's event it does the following:
 
@@ -181,7 +181,7 @@ This function is invoked by the scheduled Cloudwatch rules. On receiving the rul
 
     - These values are customizable but currently the list must include two separate values.
 
-  
+
   * Updates the target stack utilizing the assumed role and the updated `ForceUpdateToggle` values.
 
 ## Built With
