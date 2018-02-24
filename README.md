@@ -8,7 +8,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### Prerequisites
 
-1. Command line access to an AWS account with the [required permissions](##Deployment)
+1. Command line access to an AWS account with administrative access.
 
 2. Ensure your environment has been configured in accordance with the [AWS installation instructions for the serverless framework](https://serverless.com/framework/docs/providers/aws/guide/installation/).
 
