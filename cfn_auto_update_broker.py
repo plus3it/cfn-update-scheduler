@@ -8,7 +8,6 @@ import json
 
 client = boto3.client('cloudformation')
 event = boto3.client('events')
-iam = boto3.client('iam')
 aws_lambda = boto3.client('lambda')
 
 function_name = os.environ['FUNCTION_NAME']
@@ -24,115 +23,131 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def get_lambda_arn(function_name):
+class AWSLambda(object):
+    """Define AWS lambda function and associated operations."""
+
+    def __init__(self, function_name, event_name):
+        """Define AWS lambda function components."""
+        self.name = function_name
+        self.event_name = event_name
+        self.statement_id = "AWSEvents_{}_{}".format(self.event_name,
+                                                     self.name)
+        self.rule_arn = "arn:aws:events:{}:{}:rule/{}".format(region,
+                                                              account_id,
+                                                              self.event_name)
+        self.get_function_input = {'FunctionName': self.name}
+        self.add_permission_input = {
+            'FunctionName': self.name,
+            'StatementId': self.statement_id,
+            'Action': 'lambda:InvokeFunction',
+            'Principal': 'events.amazonaws.com',
+            'SourceArn': self.rule_arn,
+        }
+        self.remove_permission_input = {
+            'FunctionName': self.name,
+            'StatementId': self.statement_id
+        }
+
+
+class CloudwatchEvent(object):
+    """Define Cloudwatch event and associated operations."""
+
+    def __init__(self, stack_name, interval, toggle_parameter,
+                 toggle_values):
+        """Define Cloudwatch event components."""
+        self.stack_name = stack_name
+        self.name = "auto-update-{}".format(self.stack_name)
+        self.interval = interval
+        self.toggle_parameter = toggle_parameter
+        self.toggle_values = toggle_values
+        self.description = "trigger for {} auto update".format(self.stack_name)
+        self.target_function_name = function_name
+        self.target_lambda_arn = get_lambda_arn(
+         FunctionName=self.target_function_name)
+        self.event_constant = {
+             'event_name': self.name,
+             'stack_name': self.stack_name,
+             'toggle_parametes': self.toggle_parameter,
+             'toggle_values': self.toggle_values
+           }
+        self.rule_text = {
+            'Name': self.name,
+            'ScheduleExpression': self.interval,
+            'State': 'ENABLED',
+            'Description': self.description
+        }
+        self.put_targets_input = {
+             'Rule': self.name,
+             'Targets': [
+                {
+                    'Id': self.target_function_name,
+                    'Arn': self.target_lambda_arn,
+                    'Input': json.dumps(self.event_constant)
+                }
+             ]
+        }
+        self.remove_targets_input = {
+            'Rule': self.name,
+            'Ids': [
+                self.target_function_name,
+                ]
+        }
+        self.delete_rule_input = {
+            'Name': self.name
+        }
+
+
+def get_lambda_arn(**kwargs):
     """Return lambda function arn."""
-    response = aws_lambda.get_function(
-        FunctionName=function_name
-    )
+    response = aws_lambda.get_function(**kwargs)
     log.info("get_lambda_name: {}".format(response))
-    function_name = response['Configuration']['FunctionArn']
-    return function_name
+    lambda_arn = response['Configuration']['FunctionArn']
+    return lambda_arn
 
 
-def create_event(stack_name, interval, toggle_parameter, toggle_values):
-    """Create a cloudwatch event."""
-    event_name = "auto-update-{}".format(stack_name)
-    event_description = "trigger for {} auto update".format(stack_name)
-    response = event.put_rule(
-        Name=event_name,
-        ScheduleExpression=interval,
-        State='ENABLED',
-        Description=event_description
-    )
-    log.info("create_event: {}".format(response))
-    return response
-
-
-def put_targets(stack_name, lambda_arn, toggle_parameter, toggle_values):
-    """Set event target and add constants."""
-    """
-    Sets event target to source Lambda function, sets stack specific
-    constants, and calls the resource policy additon function.
-    """
-    event_name = "auto-update-{}".format(stack_name)
-    target_input = {
-      "event_name": "{}".format(event_name),
-      "stack_name": "{}".format(stack_name),
-      "toggle_parameter": "{}".format(toggle_parameter),
-      "toggle_values": "{}".format(toggle_values)
-      }
-    response = event.put_targets(
-        Rule=event_name,
-        Targets=[
-            {
-                'Id': function_name,
-                'Arn': lambda_arn,
-                'Input': json.dumps(target_input)
-            }
-        ]
-    )
-    log.info("put_targets: {}".format(response))
-    return response
-
-
-def lambda_add_resource_policy(event_name):
-    """Update resource policy."""
-    rule_arn = (
-      "arn:aws:events:{}:{}:rule/{}".format(region, account_id, event_name))
-    statement_id = "AWSEvents_{}_{}".format(event_name, function_name)
-    response = aws_lambda.add_permission(
-            FunctionName=function_name,
-            StatementId=statement_id,
-            Action='lambda:InvokeFunction',
-            Principal='events.amazonaws.com',
-            SourceArn=rule_arn,
-        )
+def lambda_add_resource_policy(**kwargs):
+    """Update lambda resource policy."""
+    response = aws_lambda.add_permission(**kwargs)
     log.info("lambda_add_resource_policy: {}".format(response))
     return response
 
 
-def lambda_remove_resource_policy(event_name):
-    """Remove resource policy."""
-    statement_id = "AWSEvents_{}_{}".format(event_name, function_name)
-    response = aws_lambda.remove_permission(
-        FunctionName=function_name,
-        StatementId=statement_id,
-    )
+def lambda_remove_resource_policy(**kwargs):
+    """Remove lambda resource policy."""
+    response = aws_lambda.remove_permission(**kwargs)
     log.info("lambda_remove_resource_policy: {}".format(response))
     return response
 
 
-def remove_targets(event_name):
+def create_event(**kwargs):
+    """Create a cloudwatch event."""
+    response = event.put_rule(**kwargs)
+    log.info("create_event: {}".format(response))
+    return response
+
+
+def put_targets(**kwargs):
+    """Set Cloudwatch event target."""
+    response = event.put_targets(**kwargs)
+    log.info("put_targets: {}".format(response))
+    return response
+
+
+def remove_event_targets(**kwargs):
     """Remove CloudWatch event target."""
     """
     Cloudwatch events cannot be deleted if they ref a target
     """
-    response = event.remove_targets(
-        Rule=event_name,
-        Ids=[
-            function_name,
-            ]
-        )
+    response = event.remove_targets(**kwargs)
     log.info("remove_targets: {}".format(response))
     return response
 
 
-def delete_event(stack_name):
+def delete_event(**kwargs):
     """Delete target cloudwatch event."""
-    event_name = "auto-update-{}".format(stack_name)
-    remove_targets(event_name)
-    response = event.delete_rule(
-        Name=event_name
-        )
+    response = event.delete_rule(**kwargs)
     log.info("delete_event: {}".format(response))
     return response
-
-
-def get_parameters(stack_name):
-    """Get stack's parameters."""
-    stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
-    current_parameter_list = stack['Parameters']
-    return current_parameter_list
 
 
 def lambda_handler(event, context):
@@ -151,9 +166,13 @@ def lambda_handler(event, context):
             log.info('Recieved Delete event')
             event_name = ("auto-update-{}".format(stack_name))
             try:
-                delete_event(stack_name)
-                log.info('Deleted event: {}'.format(event_name))
-                lambda_remove_resource_policy(event_name)
+                event_obj = CloudwatchEvent(stack_name, None, None, None)
+                remove_event_targets(**event_obj.remove_targets_input)
+                delete_event(**event_obj.delete_rule_input)
+                log.info('Deleted event: {}'.format(event_obj.name))
+                aws_lambda_obj = AWSLambda(function_name, event_obj.name)
+                lambda_remove_resource_policy(
+                 **aws_lambda_obj.remove_permission_input)
                 log.info('Removed event resource policy.')
                 reason = "deleted cw update event"
                 cfnresponse.send(event,
@@ -175,19 +194,19 @@ def lambda_handler(event, context):
                 raise
         if event['RequestType'] == 'Create':
             log.info('Recieved Create event')
-            event_name = ("auto-update-{}".format(stack_name))
+            event_obj = CloudwatchEvent(stack_name, interval, toggle_parameter,
+                                        toggle_values)
             try:
-                create_event(stack_name, interval, toggle_parameter,
-                             toggle_values)
+                create_event(**event_obj.rule_text)
                 log.info(
-                 'Created CloudWatch event: {}'.format(event_name))
-                lambda_arn = get_lambda_arn(function_name)
-                put_targets(stack_name, lambda_arn, toggle_parameter,
-                            toggle_values)
+                 'Created CloudWatch event: {}'.format(event_obj.name))
+                put_targets(**event_obj.put_targets_input)
                 log.info(
                  'Associated Cloudwatch event {} with {}'.format(
-                   event_name, stack_name))
-                lambda_add_resource_policy(event_name)
+                   event_obj.name, event_obj.stack_name))
+                aws_lambda_obj = AWSLambda(function_name, event_obj.name)
+                lambda_add_resource_policy(
+                 **aws_lambda_obj.add_permission_input)
                 log.info('Added resource policy for Cloudwatch event.')
                 reason = "created cw auto update event"
                 cfnresponse.send(event,
@@ -208,14 +227,15 @@ def lambda_handler(event, context):
                 raise
         if event['RequestType'] == 'Update':
             log.info('Recieved Update event')
+            event_obj = CloudwatchEvent(stack_name, interval, toggle_parameter,
+                                        toggle_values)
             try:
                 stack = (
                  client.describe_stacks(StackName=stack_name)['Stacks'][0])
                 if stack['StackStatus'] is not 'CREATE_IN_PROGRESS':
-                    create_event(stack_name, interval, toggle_parameter,
-                                 toggle_values)
-                    log.info(
-                     'Succesfully updated stack: {}'.format(stack_name))
+                    create_event(**event_obj.rule_text)
+                    log.info('Succesfully updated auto-update rule: {}'.format(
+                     event_obj.name))
                 reason = "updated cw event"
                 cfnresponse.send(event,
                                  context,
