@@ -8,7 +8,9 @@ import boto3
 import os
 from moto import mock_events, mock_sts, mock_lambda
 from ast import literal_eval
-import json
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # mock env vars before import
 mock_env = mock.patch.dict(
