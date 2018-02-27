@@ -153,6 +153,7 @@ def delete_event(**kwargs):
 def lambda_handler(event, context):
     """Parse event."""
     log.info("labmda_handler recieved event: {}".format(event))
+    response_type = cfnresponse.FAILED
     try:
         response_value = event['ResourceProperties']
         response_data = {}
@@ -162,97 +163,62 @@ def lambda_handler(event, context):
         interval = event['ResourceProperties']['UpdateSchedule']
         stack_name = event['ResourceProperties']['StackName']
         reason = None
-        if event['RequestType'] == 'Delete':
+
+        def cfn_delete_request():
+            """Delete event."""
             log.info('Recieved Delete event')
-            event_name = ("auto-update-{}".format(stack_name))
-            try:
-                event_obj = CloudwatchEvent(stack_name, None, None, None)
-                remove_event_targets(**event_obj.remove_targets_input)
-                delete_event(**event_obj.delete_rule_input)
-                log.info('Deleted event: {}'.format(event_obj.name))
-                aws_lambda_obj = AWSLambda(function_name, event_obj.name)
-                lambda_remove_resource_policy(
-                 **aws_lambda_obj.remove_permission_input)
-                log.info('Removed event resource policy.')
-                reason = "deleted cw update event"
-                cfnresponse.send(event,
-                                 context,
-                                 cfnresponse.SUCCESS,
-                                 response_data,
-                                 reason,
-                                 "CustomResourcePhyiscalID")
-            except Exception as e:
-                cfnresponse.send(event,
-                                 context,
-                                 cfnresponse.SUCCESS,
-                                 response_data,
-                                 reason,
-                                 "CustomResourcePhyiscalID")
-                log.error(
-                 'Delete event: {} operation failed.'.format(event_name))
-                print(str(e), e.args)
-                raise
-        if event['RequestType'] == 'Create':
-            log.info('Recieved Create event')
-            event_obj = CloudwatchEvent(stack_name, interval, toggle_parameter,
-                                        toggle_values)
-            try:
-                create_event(**event_obj.rule_text)
-                log.info(
-                 'Created CloudWatch event: {}'.format(event_obj.name))
-                put_targets(**event_obj.put_targets_input)
-                log.info(
-                 'Associated Cloudwatch event {} with {}'.format(
-                   event_obj.name, event_obj.stack_name))
-                aws_lambda_obj = AWSLambda(function_name, event_obj.name)
-                lambda_add_resource_policy(
-                 **aws_lambda_obj.add_permission_input)
-                log.info('Added resource policy for Cloudwatch event.')
-                reason = "created cw auto update event"
-                cfnresponse.send(event,
-                                 context,
-                                 cfnresponse.SUCCESS,
-                                 response_data,
-                                 reason,
-                                 "CustomResourcePhyiscalID")
-            except Exception as e:
-                log.exception('Create event failed')
-                print(str(e), e.args)
-                cfnresponse.send(event,
-                                 context,
-                                 cfnresponse.FAILED,
-                                 response_data,
-                                 reason,
-                                 "CustomResourcePhyiscalID")
-                raise
-        if event['RequestType'] == 'Update':
+
+            event_obj = CloudwatchEvent(stack_name, None, None, None)
+            remove_event_targets(**event_obj.remove_targets_input)
+            delete_event(**event_obj.delete_rule_input)
+
+            aws_lambda_obj = AWSLambda(function_name, event_obj.name)
+            lambda_remove_resource_policy(
+             **aws_lambda_obj.remove_permission_input)
+
+            return cfnresponse.SUCCESS
+
+        def cfn_update_request():
+            """Update event."""
             log.info('Recieved Update event')
             event_obj = CloudwatchEvent(stack_name, interval, toggle_parameter,
                                         toggle_values)
-            try:
-                stack = (
-                 client.describe_stacks(StackName=stack_name)['Stacks'][0])
-                if stack['StackStatus'] is not 'CREATE_IN_PROGRESS':
-                    create_event(**event_obj.rule_text)
-                    log.info('Succesfully updated auto-update rule: {}'.format(
-                     event_obj.name))
-                reason = "updated cw event"
-                cfnresponse.send(event,
-                                 context,
-                                 cfnresponse.SUCCESS,
-                                 response_data,
-                                 reason,
-                                 "CustomResourcePhyiscalID")
-            except Exception as e:
-                log.exception('Update event failed.')
-                print(str(e), e.args)
-                cfnresponse.send(event,
-                                 context,
-                                 cfnresponse.FAILED,
-                                 response_data,
-                                 reason,
-                                 "CustomResourcePhyiscalID")
-                raise
+            stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
+            if stack['StackStatus'] is not 'CREATE_IN_PROGRESS':
+                create_event(**event_obj.rule_text)
+                log.info('Succesfully updated auto-update rule: {}'.format(
+                 event_obj.name))
+
+            return cfnresponse.SUCCESS
+
+        def cfn_create_request():
+            """Create event."""
+            log.info('Recieved Create event')
+
+            event_obj = CloudwatchEvent(stack_name, interval, toggle_parameter,
+                                        toggle_values)
+            create_event(**event_obj.rule_text)
+            put_targets(**event_obj.put_targets_input)
+
+            aws_lambda_obj = AWSLambda(function_name, event_obj.name)
+            lambda_add_resource_policy(
+             **aws_lambda_obj.add_permission_input)
+
+            return cfnresponse.SUCCESS
+
+        if event['RequestType'] == 'Delete':
+            response_type = cfn_delete_request()
+        if event['RequestType'] == 'Create':
+            response_type = cfn_create_request()
+        if event['RequestType'] == 'Update':
+            response_type = cfn_update_request()
+        else:
+            raise 'Unknown request type'
     except Exception as e:
-        log.exception('CloudWatch triggerd update of stack: {} failed.'.format(
-           stack_name))
+        log.exception(
+         'Error: Failed on event type {}'.format(event['RequestType']))
+        print(str(e), e.args)
+        raise
+    finally:
+        cfnresponse.send(event, context, response_type, response_data, reason,
+                         "CustomResourcePhyiscalID")
