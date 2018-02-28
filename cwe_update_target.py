@@ -21,46 +21,65 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-def assume_role(role_arn, duration):
+def get_assume_role_input(role_arn, duration):
+    """Create input for assume_role."""
+    assume_role_input = {
+        'RoleArn': role_arn,
+        'RoleSessionName': 'cwe_update_target_LambdaFunction',
+        'DurationSeconds': duration
+    }
+    return assume_role_input
+
+
+def assume_role(**kwargs):
     """Assume stack update role."""
-    response = sts.assume_role(
-        RoleArn=role_arn,
-        RoleSessionName='cwe_update_target_LambdaFunction',
-        DurationSeconds=duration,
-    )
+    response = sts.assume_role(**kwargs)
     log.info("assume_role: {}".format(response))
     return response
 
 
-def get_elevated_session(assume_role_response):
+def get_elevated_session_input(response):
+    """Create input for get_elevated_session."""
+    elevated_session_input = {
+     'aws_access_key_id': response['Credentials']['AccessKeyId'],
+     'aws_secret_access_key': response['Credentials']['SecretAccessKey'],
+     'aws_session_token': response['Credentials']['SessionToken']
+    }
+    return elevated_session_input
+
+
+def get_elevated_session(**kwargs):
     """Create new boto3 session with assumed role."""
-    update_stack_session = boto3.Session(
-     aws_access_key_id=assume_role_response['Credentials']['AccessKeyId'],
-     aws_secret_access_key=assume_role_response['Credentials']['SecretAccessKey'],
-     aws_session_token=assume_role_response['Credentials']['SessionToken'])
+    update_stack_session = boto3.Session(**kwargs)
     elevated_cfn_client = update_stack_session.client('cloudformation')
     return elevated_cfn_client
 
 
-def get_metrics(event_name):
-    """Get event invoke count."""
-    response = cloudwatch.get_metric_statistics(
-        Namespace='AWS/Events',
-        MetricName='Invocations',
-        Dimensions=[
+def get_metrics_input(event_name):
+    """Create get_metrics input."""
+    get_metrics_input = {
+        'Namespace': 'AWS/Events',
+        'MetricName': 'Invocations',
+        'Dimensions': [
             {
                 'Name': 'RuleName',
                 'Value': event_name,
             },
         ],
-        StartTime=datetime.now() - timedelta(days=1),
-        EndTime=datetime.now() + timedelta(days=1),
-        Period=86400,
-        Statistics=[
+        'StartTime': datetime.now() - timedelta(days=1),
+        'EndTime': datetime.now() + timedelta(days=1),
+        'Period': 86400,
+        'Statistics': [
             'Sum',
         ],
-        Unit='Count'
-    )
+        'Unit': 'Count'
+    }
+    return get_metrics_input
+
+
+def get_metrics(**kwargs):
+    """Get event invoke count."""
+    response = cloudwatch.get_metric_statistics(**kwargs)
     log.info("get_metrics: {}".format(response))
     return response
 
@@ -118,6 +137,23 @@ def update_stack(elevated_cfn_client, stack_name, toggle_parameter,
     return response
 
 
+def assumed_role_update_stack(stack_name, toggle_parameter, toggle_values,
+                              duration):
+    """Update stack with assumed role."""
+    assume_role_input = get_assume_role_input(stack_update_arn, duration)
+    assume_role_response = assume_role(**assume_role_input)
+    log.info("Assumed StackUpdateRole for {} seconds".format(duration))
+
+    elevated_session_input = get_elevated_session_input(assume_role_response)
+    elevated_cfn_client = get_elevated_session(**elevated_session_input)
+    log.info("Retrieved elevated cfn client.")
+
+    update_stack(elevated_cfn_client, stack_name, toggle_parameter,
+                 toggle_values)
+    log.info('CloudWatch successfully triggered update of stack: {}'.format(
+       stack_name))
+
+
 def lambda_handler(event, context):
     """Parse event."""
     # print(event)
@@ -128,18 +164,12 @@ def lambda_handler(event, context):
         toggle_values = literal_eval(event['toggle_values'])
         stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
         # prevent update if trigger is being run for the first time
-        if not get_metrics(event_name)['Datapoints'] or (
-          stack['StackStatus'] is not "CREATE_IN_PROGRESS"):
+        metrics = get_metrics(**get_metrics_input(event_name))
+        invoke_update_metric = metrics['Datapoints']
+        if not invoke_update_metric or (
+         stack['StackStatus'] is not "CREATE_IN_PROGRESS"):
             duration = 3600  # in seconds. 900 (15min) or greater.
-            update_stack_role = assume_role(stack_update_arn, duration)
-            log.info("Assumed StackUpdateRole for {} seconds".format(duration))
-            elevated_cfn_client = get_elevated_session(update_stack_role)
-            log.info("Retrieved elevated cfn client.")
-            update_stack(elevated_cfn_client, stack_name, toggle_parameter,
-                         toggle_values)
-            log.info(
-             'CloudWatch successfully triggered update of stack: {}'.format(
-               stack_name))
+            assumed_role_update_stack(stack_name, toggle_parameter,
+                                      toggle_values, duration)
     except Exception as e:
-        log.exception('CloudWatch triggerd update of stack: {} failed.'.format(
-           stack_name))
+        log.exception('CloudWatch triggerd update failed.')
