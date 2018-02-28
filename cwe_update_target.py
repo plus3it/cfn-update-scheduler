@@ -106,9 +106,9 @@ def change_toggle(parameter_list, toggle_parameter, toggle_values):
     return parameter_list
 
 
-def get_stack_tags(stack_name):
-    """Return stack tags."""
-    return client.describe_stacks(StackName=stack_name)['Stacks'][0]['Tags']
+# def get_stack_tags(stack_name):
+#     """Return stack tags."""
+#     return client.describe_stacks(StackName=stack_name)['Stacks'][0]['Tags']
 
 
 def get_update_stack_input(stack_name, stack_parameters):
@@ -120,8 +120,7 @@ def get_update_stack_input(stack_name, stack_parameters):
               'Capabilities': [
                     'CAPABILITY_IAM',
                     'CAPABILITY_NAMED_IAM'
-                ],
-              'Tags': get_stack_tags(stack_name)
+                ]
         }
 
 
@@ -138,8 +137,10 @@ def force_stack_update(elevated_cfn_client, stack_name, toggle_parameter,
     stack_parameters = change_toggle(get_parameters(stack_name),
                                      toggle_parameter,
                                      toggle_values)
-    response = update_stack(
-     **get_update_stack_input(stack_name, stack_parameters))
+    response = (
+        update_stack(elevated_cfn_client,
+                     **get_update_stack_input(stack_name, stack_parameters))
+                )
     log.info("update_stack: {}".format(response))
     return response
 
