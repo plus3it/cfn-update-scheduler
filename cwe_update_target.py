@@ -23,12 +23,11 @@ log.setLevel(logging.INFO)
 
 def get_assume_role_input(role_arn, duration):
     """Create input for assume_role."""
-    assume_role_input = {
+    return {
         'RoleArn': role_arn,
         'RoleSessionName': 'cwe_update_target_LambdaFunction',
         'DurationSeconds': duration
     }
-    return assume_role_input
 
 
 def assume_role(**kwargs):
@@ -40,12 +39,11 @@ def assume_role(**kwargs):
 
 def get_elevated_session_input(response):
     """Create input for get_elevated_session."""
-    elevated_session_input = {
+    return {
      'aws_access_key_id': response['Credentials']['AccessKeyId'],
      'aws_secret_access_key': response['Credentials']['SecretAccessKey'],
      'aws_session_token': response['Credentials']['SessionToken']
     }
-    return elevated_session_input
 
 
 def get_elevated_session(**kwargs):
@@ -57,7 +55,7 @@ def get_elevated_session(**kwargs):
 
 def get_metrics_input(event_name):
     """Create get_metrics input."""
-    get_metrics_input = {
+    return {
         'Namespace': 'AWS/Events',
         'MetricName': 'Invocations',
         'Dimensions': [
@@ -74,7 +72,6 @@ def get_metrics_input(event_name):
         ],
         'Unit': 'Count'
     }
-    return get_metrics_input
 
 
 def get_metrics(**kwargs):
@@ -87,8 +84,7 @@ def get_metrics(**kwargs):
 def get_parameters(stack_name):
     """Get stack's parameters."""
     stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
-    current_parameter_list = stack['Parameters']
-    return current_parameter_list
+    return stack['Parameters']
 
 
 def change_toggle(parameter_list, toggle_parameter, toggle_values):
@@ -106,22 +102,18 @@ def change_toggle(parameter_list, toggle_parameter, toggle_values):
                'ParameterValue': toggle_values[0]})
         else:
             continue
-    updated_parameter_list = parameter_list
-    log.info("updated parameter list: {}".format(updated_parameter_list))
-    return updated_parameter_list
+    log.info("updated parameter list: {}".format(parameter_list))
+    return parameter_list
 
 
-def update_stack(elevated_cfn_client, stack_name, toggle_parameter,
-                 toggle_values):
-    """Update stack."""
-    # skip the update if the stack_name is None
-    if not stack_name:
-        return
-    stack_parameters = change_toggle(get_parameters(stack_name),
-                                     toggle_parameter,
-                                     toggle_values)
-    stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
-    kwargs = {
+def get_stack_tags(stack_name):
+    """Return stack tags."""
+    return client.describe_stacks(StackName=stack_name)['Stacks'][0]['Tags']
+
+
+def get_update_stack_input(stack_name, stack_parameters):
+    """Return input for a stack update."""
+    return {
               'StackName': stack_name,
               'UsePreviousTemplate': True,
               'Parameters': stack_parameters,
@@ -129,10 +121,25 @@ def update_stack(elevated_cfn_client, stack_name, toggle_parameter,
                     'CAPABILITY_IAM',
                     'CAPABILITY_NAMED_IAM'
                 ],
-              'Tags': stack['Tags']
-    }
-    # print(kwargs)
+              'Tags': get_stack_tags(stack_name)
+        }
+
+
+def update_stack(elevated_cfn_client, **kwargs):
+    """Update a cloudformation stack."""
     response = elevated_cfn_client.update_stack(**kwargs)
+    log.info('update_stack: {}'.format(update_stack))
+    return response
+
+
+def force_stack_update(elevated_cfn_client, stack_name, toggle_parameter,
+                       toggle_values):
+    """Force update of cloudformation stack."""
+    stack_parameters = change_toggle(get_parameters(stack_name),
+                                     toggle_parameter,
+                                     toggle_values)
+    response = update_stack(
+     **get_update_stack_input(stack_name, stack_parameters))
     log.info("update_stack: {}".format(response))
     return response
 
@@ -148,8 +155,8 @@ def assumed_role_update_stack(stack_name, toggle_parameter, toggle_values,
     elevated_cfn_client = get_elevated_session(**elevated_session_input)
     log.info("Retrieved elevated cfn client.")
 
-    update_stack(elevated_cfn_client, stack_name, toggle_parameter,
-                 toggle_values)
+    force_stack_update(elevated_cfn_client, stack_name, toggle_parameter,
+                       toggle_values)
     log.info('CloudWatch successfully triggered update of stack: {}'.format(
        stack_name))
 
@@ -166,10 +173,13 @@ def lambda_handler(event, context):
         # prevent update if trigger is being run for the first time
         metrics = get_metrics(**get_metrics_input(event_name))
         invoke_update_metric = metrics['Datapoints']
-        if not invoke_update_metric or (
-         stack['StackStatus'] is not "CREATE_IN_PROGRESS"):
+        if (
+            not invoke_update_metric
+            or stack['StackStatus'] != "CREATE_IN_PROGRESS"
+         ):
             duration = 3600  # in seconds. 900 (15min) or greater.
             assumed_role_update_stack(stack_name, toggle_parameter,
                                       toggle_values, duration)
     except Exception as e:
+        print(str(e), e.args)
         log.exception('CloudWatch triggerd update failed.')
