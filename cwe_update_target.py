@@ -1,11 +1,11 @@
 """Update stacks."""
 
+import logging
+import os
 from ast import literal_eval
 from datetime import datetime, timedelta
-import os
+
 import boto3
-import logging
-import traceback
 
 client = boto3.client('cloudformation')
 cloudwatch = boto3.client('cloudwatch')
