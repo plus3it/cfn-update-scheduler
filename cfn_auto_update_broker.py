@@ -67,7 +67,7 @@ class CloudwatchEvent(object):
         self.event_constant = {
              'event_name': self.name,
              'stack_name': self.stack_name,
-             'toggle_parametes': self.toggle_parameter,
+             'toggle_parameter': self.toggle_parameter,
              'toggle_values': self.toggle_values
            }
         self.rule_text = {
@@ -201,19 +201,25 @@ def lambda_handler(event, context):
             put_targets(**event_obj.put_targets_input)
 
             aws_lambda_obj = AWSLambda(function_name, event_obj.name)
-            lambda_add_resource_policy(
-             **aws_lambda_obj.add_permission_input)
-
+            lambda_add_resource_policy(**aws_lambda_obj.add_permission_input)
             return cfnresponse.SUCCESS
 
-        if event['RequestType'] == 'Delete':
+        if event['RequestType'] == "Delete":
             response_type = cfn_delete_request()
-        if event['RequestType'] == 'Create':
+        if event['RequestType'] == "Create":
             response_type = cfn_create_request()
-        if event['RequestType'] == 'Update':
+        if event['RequestType'] == "Update":
             response_type = cfn_update_request()
+        if event['RequestType'] == "Create Traceback":
+            response_type = cfnresponse.FAILED
+            log.error("Create error occured and rollback intitiated.")
+        if event['RequestType'] == "Delete Traceback":
+            log.exception('Error with delete action occured.' +
+                          'View the logs for more deatils.')
+            raise Exception
         else:
-            raise 'Unknown request type'
+            log.exception('Unknown request type')
+            raise Exception
     except Exception as e:
         log.exception(
          'Error: Failed on event type {}'.format(event['RequestType']))

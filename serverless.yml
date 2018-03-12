@@ -20,12 +20,6 @@ provider:
   iamRoleStatements:
     - Effect: "Allow"
       Action:
-        - "logs:CreateLogGroup"
-        - "logs:CreateLogStream"
-        - "logs:PutLogEvents"
-      Resource: "arn:aws:logs:*:*:*"
-    - Effect: "Allow"
-      Action:
         - "events:DeleteRule"
         - "events:DisableRule"
         - "events:EnableRule"
@@ -36,14 +30,8 @@ provider:
       Resource: "*"
     - Effect: "Allow"
       Action:
-        -  "cloudformation:CreateStack"
-        -  "cloudformation:ListStacks"
         -  "cloudformation:DescribeStacks"
         -  "cloudformation:DescribeStackEvents"
-        -  "cloudformation:DescribeStackResources"
-        -  "cloudformation:GetTemplate"
-        -  "cloudformation:ValidateTemplate"
-        -  "cloudformation:UpdateStack"
       Resource: "*"
     - Effect: "Allow"
       Action:
@@ -56,12 +44,6 @@ provider:
         - "lambda:GetFunction"
       Resource:
         - arn:aws:lambda:${self:provider.region}:#{AWS::AccountId}:function:${self:functions.cwe_update_target.name}
-    # - Effect: "Allow"
-    #   Action:
-    #     -   "iam:GetRole"
-    #     -   "iam:PassRole"
-    #   Resource:
-    #     - arn:aws:iam::#{AWS::AccountId}:role/StackUpdateRole
 
 package:
    individually: true

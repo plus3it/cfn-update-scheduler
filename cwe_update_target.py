@@ -106,11 +106,6 @@ def change_toggle(parameter_list, toggle_parameter, toggle_values):
     return parameter_list
 
 
-# def get_stack_tags(stack_name):
-#     """Return stack tags."""
-#     return client.describe_stacks(StackName=stack_name)['Stacks'][0]['Tags']
-
-
 def get_update_stack_input(stack_name, stack_parameters):
     """Return input for a stack update."""
     return {
@@ -164,7 +159,7 @@ def assumed_role_update_stack(stack_name, toggle_parameter, toggle_values,
 
 def lambda_handler(event, context):
     """Parse event."""
-    # print(event)
+    log.info('recieved event: {}'.format(event))
     try:
         event_name = event['event_name']
         stack_name = event['stack_name']
