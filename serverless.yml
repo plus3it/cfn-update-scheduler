@@ -27,7 +27,7 @@ provider:
         - "events:PutTargets"
         - "events:RemoveTargets"
         - "events:PutRule"
-      Resource: "*"
+      Resource: "arn:aws:events:${self:provider.region}:#{AWS::AccountId}:rule/auto-update-*"
     - Effect: "Allow"
       Action:
         -  "cloudformation:DescribeStacks"

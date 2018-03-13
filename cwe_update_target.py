@@ -164,7 +164,7 @@ def lambda_handler(event, context):
         event_name = event['event_name']
         stack_name = event['stack_name']
         toggle_parameter = event['toggle_parameter']
-        toggle_values = literal_eval(event['toggle_values'])
+        toggle_values = event['toggle_values']
         stack = client.describe_stacks(StackName=stack_name)['Stacks'][0]
         # prevent update if trigger is being run for the first time
         metrics = get_metrics(**get_metrics_input(event_name))

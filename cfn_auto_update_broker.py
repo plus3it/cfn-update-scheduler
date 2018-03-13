@@ -26,7 +26,7 @@ log.setLevel(logging.INFO)
 class AWSLambda(object):
     """Define AWS lambda function and associated operations."""
 
-    def __init__(self, function_name, event_name):
+    def __init__(self, event_name):
         """Define AWS lambda function components."""
         self.name = function_name
         self.event_name = event_name
@@ -107,8 +107,12 @@ def get_lambda_arn(**kwargs):
 
 def lambda_add_resource_policy(**kwargs):
     """Update lambda resource policy."""
-    response = aws_lambda.add_permission(**kwargs)
-    log.info("lambda_add_resource_policy: {}".format(response))
+    try:
+        response = aws_lambda.add_permission(**kwargs)
+        log.info("lambda_add_resource_policy: {}".format(response))
+    except aws_lambda.exceptions.ResourceConflictException as e:
+        log.info('Resource policy already exists.')
+        response = None
     return response
 
 
@@ -138,8 +142,12 @@ def remove_event_targets(**kwargs):
     """
     Cloudwatch events cannot be deleted if they ref a target
     """
-    response = event.remove_targets(**kwargs)
-    log.info("remove_targets: {}".format(response))
+    try:
+        response = event.remove_targets(**kwargs)
+        log.info("remove_targets: {}".format(response))
+    except event.exceptions.ResourceNotFoundException as e:
+        log.info('Event previously removed.')
+        response = None
     return response
 
 
@@ -167,15 +175,19 @@ def lambda_handler(event, context):
         def cfn_delete_request():
             """Delete event."""
             log.info('Recieved Delete event')
-
             event_obj = CloudwatchEvent(stack_name, None, None, None)
+            aws_lambda_obj = AWSLambda(event_obj.name)
+            try:
+                lambda_remove_resource_policy(
+                 **aws_lambda_obj.remove_permission_input)
+            except aws_lambda.exceptions.ResourceNotFoundException as e:
+                log.info('Resource policy previously removed.')
+
             remove_event_targets(**event_obj.remove_targets_input)
-            delete_event(**event_obj.delete_rule_input)
-
-            aws_lambda_obj = AWSLambda(function_name, event_obj.name)
-            lambda_remove_resource_policy(
-             **aws_lambda_obj.remove_permission_input)
-
+            try:
+                delete_event(**event_obj.delete_rule_input)
+            except event.exceptions.ResourceNotFoundException as e:
+                log.info('Event previously deleted.')
             return cfnresponse.SUCCESS
 
         def cfn_update_request():
@@ -200,29 +212,39 @@ def lambda_handler(event, context):
             create_event(**event_obj.rule_text)
             put_targets(**event_obj.put_targets_input)
 
-            aws_lambda_obj = AWSLambda(function_name, event_obj.name)
-            lambda_add_resource_policy(**aws_lambda_obj.add_permission_input)
+            aws_lambda_obj = AWSLambda(event_obj.name)
+            try:
+                lambda_add_resource_policy(
+                 **aws_lambda_obj.add_permission_input)
+            except aws_lambda.exceptions.ResourceConflictException as e:
+                log.info('Stale resource policy detected.')
+                lambda_remove_resource_policy(
+                 **aws_lambda_obj.remove_permission_input)
+                log.info('removed stale resource policy.')
+                lambda_add_resource_policy(
+                 **aws_lambda_obj.add_permission_input)
+                log.info('resource policy successfully added.')
             return cfnresponse.SUCCESS
 
         if event['RequestType'] == "Delete":
             response_type = cfn_delete_request()
-        if event['RequestType'] == "Create":
+        elif event['RequestType'] == "Create":
             response_type = cfn_create_request()
-        if event['RequestType'] == "Update":
+        elif event['RequestType'] == "Update":
             response_type = cfn_update_request()
-        if event['RequestType'] == "Create Traceback":
-            response_type = cfnresponse.FAILED
+        elif event['RequestType'] == "Create Traceback":
             log.error("Create error occured and rollback intitiated.")
-        if event['RequestType'] == "Delete Traceback":
+        elif event['RequestType'] == "Delete Traceback":
             log.exception('Error with delete action occured.' +
                           'View the logs for more deatils.')
             raise Exception
+        elif event['RequestType'] is None:
+            log.exception('Event recieved was empty.')
         else:
             log.exception('Unknown request type')
             raise Exception
     except Exception as e:
-        log.exception(
-         'Error: Failed on event type {}'.format(event['RequestType']))
+        log.exception('Error: failed on event: {}'.format(event))
         print(str(e), e.args)
         raise
     finally:
