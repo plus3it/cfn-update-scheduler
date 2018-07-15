@@ -87,11 +87,11 @@ def get_parameters(stack_name):
     return stack['Parameters']
 
 
-def change_toggle(parameter_list, toggle_parameter, toggle_values):
+def update_parameters(parameter_list, toggle_parameter, toggle_values):
     """Change stack update toggle."""
-    for index, dictionary in enumerate(parameter_list):
-        key = dictionary['ParameterKey']
-        value = dictionary['ParameterValue']
+    for index, parameter in enumerate(parameter_list):
+        key = parameter['ParameterKey']
+        value = parameter['ParameterValue']
         if key == toggle_parameter and value == toggle_values[0]:
             parameter_list[index] = (
              {'ParameterKey': toggle_parameter,
@@ -101,7 +101,9 @@ def change_toggle(parameter_list, toggle_parameter, toggle_values):
               {'ParameterKey': toggle_parameter,
                'ParameterValue': toggle_values[0]})
         else:
-            continue
+            parameter.pop('ParameterValue')
+            parameter['UsePreviousValue'] = True
+            parameter_list[index] = parameter
     log.info("updated parameter list: {}".format(parameter_list))
     return parameter_list
 
@@ -129,13 +131,15 @@ def update_stack(elevated_cfn_client, **kwargs):
 def force_stack_update(elevated_cfn_client, stack_name, toggle_parameter,
                        toggle_values):
     """Force update of cloudformation stack."""
-    stack_parameters = change_toggle(get_parameters(stack_name),
-                                     toggle_parameter,
-                                     toggle_values)
+    stack_parameters = update_parameters(
+        get_parameters(stack_name),
+        toggle_parameter,
+        toggle_values
+    )
     response = (
         update_stack(elevated_cfn_client,
                      **get_update_stack_input(stack_name, stack_parameters))
-                )
+    )
     log.info("update_stack: {}".format(response))
     return response
 
