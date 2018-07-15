@@ -1,0 +1,19 @@
+{
+  "name": "cfn-update-scheduler",
+  "version": "0.0.0",
+  "description": "Serverless project to automate CloudFormation stack updates",
+  "dependencies": {
+    "serverless-pseudo-parameters": "^1.6.0"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plus3it/cfn-update-scheduler.git"
+  },
+  "author": "Plus3 IT Systems",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/plus3it/cfn-update-scheduler/issues"
+  },
+  "homepage": "https://github.com/plus3it/cfn-update-scheduler#readme"
+}
