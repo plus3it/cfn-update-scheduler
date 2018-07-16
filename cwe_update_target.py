@@ -87,25 +87,26 @@ def get_parameters(stack_name):
     return stack['Parameters']
 
 
+def update_parameter(parameter, toggle_parameter, toggle_values):
+    """Prepare parameter for stack update operation."""
+    if parameter['ParameterKey'] == toggle_parameter:
+        toggle_index = toggle_values.index(parameter['ParameterValue'])
+        toggle_index_new = (toggle_index + 1) % len(toggle_values)
+        parameter['ParameterValue'] = toggle_values[toggle_index_new]
+    else:
+        parameter.pop('ParameterValue')
+        parameter['UsePreviousValue'] = True
+
+    return parameter
+
 def update_parameters(parameter_list, toggle_parameter, toggle_values):
-    """Change stack update toggle."""
-    for index, parameter in enumerate(parameter_list):
-        key = parameter['ParameterKey']
-        value = parameter['ParameterValue']
-        if key == toggle_parameter and value == toggle_values[0]:
-            parameter_list[index] = (
-             {'ParameterKey': toggle_parameter,
-              'ParameterValue': toggle_values[1]})
-        elif key == toggle_parameter and value == toggle_values[1]:
-            parameter_list[index] = (
-              {'ParameterKey': toggle_parameter,
-               'ParameterValue': toggle_values[0]})
-        else:
-            parameter.pop('ParameterValue')
-            parameter['UsePreviousValue'] = True
-            parameter_list[index] = parameter
-    log.info("updated parameter list: {}".format(parameter_list))
-    return parameter_list
+    """Prepare list of parameters for stack update operation."""
+    parameters = [
+        update_parameter(parameter, toggle_parameter, toggle_values) for
+        parameter in parameter_list
+    ]
+    log.info("updated parameter list: {}".format(parameters))
+    return parameters
 
 
 def get_update_stack_input(stack_name, stack_parameters):
