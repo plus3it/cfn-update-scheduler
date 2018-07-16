@@ -90,20 +90,16 @@ def get_parameters(stack_name):
 def update_parameters(parameter_list, toggle_parameter, toggle_values):
     """Change stack update toggle."""
     for index, parameter in enumerate(parameter_list):
-        key = parameter['ParameterKey']
-        value = parameter['ParameterValue']
-        if key == toggle_parameter and value == toggle_values[0]:
-            parameter_list[index] = (
-             {'ParameterKey': toggle_parameter,
-              'ParameterValue': toggle_values[1]})
-        elif key == toggle_parameter and value == toggle_values[1]:
-            parameter_list[index] = (
-              {'ParameterKey': toggle_parameter,
-               'ParameterValue': toggle_values[0]})
+        if parameter['ParameterKey'] == toggle_parameter:
+            toggle_index = toggle_values.index(parameter['ParameterValue'])
+            toggle_index_new = (toggle_index + 1) % len(toggle_values)
+            parameter['ParameterValue'] = toggle_values[toggle_index_new]
         else:
             parameter.pop('ParameterValue')
             parameter['UsePreviousValue'] = True
-            parameter_list[index] = parameter
+
+        parameter_list[index] = parameter
+
     log.info("updated parameter list: {}".format(parameter_list))
     return parameter_list
 
